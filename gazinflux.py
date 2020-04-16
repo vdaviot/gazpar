@@ -6,7 +6,6 @@ import sys
 import datetime
 import locale
 from dateutil.relativedelta import relativedelta
-from influxdb import InfluxDBClient
 import gazpar
 import json
 
@@ -63,14 +62,6 @@ def _getDateTS(y,mo,d,h,m):
     date = (datetime.datetime(year=y,month=mo,day=d,hour=h,minute=m,second=0,microsecond=0))
     return date.timestamp()
 
-# Get startDate with influxDB lastdate +1
-def _getStartDateInfluxDb(client,measurement):
-    result = client.query("SELECT * from " + measurement + " ORDER BY time DESC LIMIT 1")
-    data = list(result.get_points())
-    datar = data[0]['time'].split('T')
-    datarr = datar[0].split('-')
-    return datarr
-
 # Let's start here !
 
 if __name__ == "__main__":
@@ -86,17 +77,6 @@ if __name__ == "__main__":
 
     params = _openParams(PFILE)
 
-    # Try to log in InfluxDB Server
-    try:
-        logging.info("logging in InfluxDB Server Host %s...", params['influx']['host'])
-        client = InfluxDBClient(params['influx']['host'], params['influx']['port'],
-                    params['influx']['username'], params['influx']['password'],
-                    params['influx']['db'], ssl=params['influx']['ssl'], verify_ssl=params['influx']['verify_ssl'])
-        logging.info("logged in InfluxDB Server Host %s succesfully", params['influx']['host'])
-    except:
-        logging.error("unable to login on %s", params['influx']['host'])
-        sys.exit(1)
-
     # Try to log in Enedis API
     try:
         logging.info("logging in GRDF URI %s...", gazpar.API_BASE_URI)
@@ -106,20 +86,11 @@ if __name__ == "__main__":
         logging.error("unable to login on %s : %s", gazpar.API_BASE_URI, exc)
         sys.exit(1)
 
-    # Calculate start/endDate and firstTS for data to request/parse
-    if args.last:
-        logging.info("looking for last value date on InfluxDB 'conzo_gaz' on host %s...", params['influx']['host'])
-        startDate = _getStartDateInfluxDb(client,"conso_gaz")
-        logging.info("found last fetch date %s on InfluxDB 'conzo_gaz' on host %s...", startDate[2]+"/"+startDate[1]+"/"+startDate[0], params['influx']['host'])
-        firstTS =  _getDateTS(int(startDate[0]),int(startDate[1]),int(startDate[2]),12,0)
-        startDate = startDate[2]+"/"+startDate[1]+"/"+startDate[0]
-    else :
-        logging.warn("GRDF will perhaps has not all data for the last %s days ",args.days)
-        startDate = _getStartDate(datetime.date.today(), args.days)
-        firstTS =  _getStartTS(args.days)
+    startDate = _getStartDate(datetime.date.today(), args.days)
+    endDate = _dayToStr(datetime.date.today())
+    firstTS =  _getStartTS(args.days)
 
     logging.info("will use %s as firstDate and %s as startDate", firstTS, startDate)
-    endDate = _dayToStr(datetime.date.today())
 
     # Try to get data from Enedis API
     resGrdf = gazpar.get_data_per_day(token, startDate, endDate)
@@ -158,12 +129,4 @@ if __name__ == "__main__":
         else:
             logging.info(("value NOT added to jsonInflux as {0} > {1}").format(t.timestamp(), firstTS))
         i=+1
-    if (args.verbose):
-        pp.pprint(jsonInflux)
-    logging.info("trying to write {0} points to influxDB".format(len(jsonInflux)))
-    try:
-        client.write_points(jsonInflux)
-    except:
-        logging.info("unable to write data points to influxdb")
-    else:
-        logging.info("done")
+    pp.pprint(jsonInflux)
