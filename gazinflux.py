@@ -88,7 +88,7 @@ if __name__ == "__main__":
     start = _getStartDate(datetime.date.today(), args.days)
     end = _dayToStr(datetime.date.today())
 
-    logging.info("querying from {} to {}").format(start, end)
+    logging.info("querying from {} to {}".format(start, end))
 
     # Try to get data from Enedis API
     try:
