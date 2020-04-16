@@ -68,7 +68,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-d",  "--days",    type=int, help="Number of days from now to download", default=1)
-    parser.add_argument("-l",  "--last",    action="store_true", help="Check from InfluxDb the number of missing days", default=False)
     parser.add_argument("-v",  "--verbose", action="store_true", help="More verbose", default=False)
     args = parser.parse_args()
 
@@ -86,18 +85,16 @@ if __name__ == "__main__":
         logging.error("unable to login on %s : %s", gazpar.API_BASE_URI, exc)
         sys.exit(1)
 
-    startDate = _getStartDate(datetime.date.today(), args.days)
-    endDate = _dayToStr(datetime.date.today())
-    firstTS =  _getStartTS(args.days)
+    start = _getStartDate(datetime.date.today(), args.days)
+    end = _dayToStr(datetime.date.today())
 
-    logging.info("will use %s as firstDate and %s as startDate", firstTS, startDate)
+    logging.info("querying from {} to {}", start, end)
 
     # Try to get data from Enedis API
-    resGrdf = gazpar.get_data_per_day(token, startDate, endDate)
     try:
-        logging.info("get Data from GRDF from {0} to {1}".format(startDate, endDate))
+        logging.info("get Data from GRDF from {0} to {1}".format(start, end))
         # Get result from Enedis by 30m
-        resGrdf = gazpar.get_data_per_day(token, startDate, endDate)
+        resGrdf = gazpar.get_data_per_day(token, start, end)
 
         if (args.verbose):
             pp.pprint(resGrdf)
@@ -107,26 +104,21 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # When we have all values let's start parse data and pushing it
-    jsonInflux = []
-    i = 0
+    output = []
     for d in resGrdf:
         # Use the formula to create timestamp, 1 ordre = 30min
-        t = datetime.datetime.strptime(d['date'] + " 12:00", '%d-%m-%Y %H:%M')
-        logging.info(("found value : {0:3} kWh / {1:7.2f} m3 at {2}").format(d['kwh'], d['mcube'], t.strftime('%Y-%m-%dT%H:%M:%SZ')))
-        if t.timestamp() > firstTS:
-            logging.info(("value added to jsonInflux as {0} > {1}").format(t.strftime('%Y-%m-%d %H:%M'), datetime.datetime.fromtimestamp(firstTS).strftime('%Y-%m-%d %H:%M')))
-            jsonInflux.append({
-                           "measurement": "conso_gaz",
-                           "tags": {
-                               "fetch_date" : endDate
-                           },
-                           "time": t.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                           "fields": {
-                               "kwh": d['kwh'],
-                               "mcube": d['mcube']
-                           }
-                         })
-        else:
-            logging.info(("value NOT added to jsonInflux as {0} > {1}").format(t.timestamp(), firstTS))
-        i=+1
-    pp.pprint(jsonInflux)
+        t = datetime.datetime.strptime(d['date'], '%d-%m-%Y')
+        date_showed = t.strftime('%Y-%m-%d')
+        logging.info(("found value : {0:3} kWh / {1:7.2f} m3 at {2}").format(d['kwh'], d['mcube'], date_showed))
+        output.append({
+            "measurement": "conso_gaz",
+            "tags": {
+                "fetch_date" : end
+            },
+            "time": date_showed,
+            "fields": {
+                "kwh": d['kwh'],
+                "mcube": d['mcube']
+            }
+        })
+    pp.pprint(output)
